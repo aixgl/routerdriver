@@ -2,6 +2,8 @@ package routerdriver
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 )
 
 type IParams interface {
@@ -86,14 +88,18 @@ func (r *Router) Handler(method, path string, handler http.Handler) {
 // To use the operating system's file system implementation,
 // use http.Dir:
 //     router.ServeFiles("/src/*filepath", http.Dir("/var/www"))
-func (r *Router) ServeFiles(path string, root http.FileSystem) {
+func (r *Router) ServeFiles(path string, root string) {
 	if len(path) < 10 || path[len(path)-10:] != "/*filepath" {
 		panic("path must end with /*filepath in path '" + path + "'")
 	}
 
-	fileServer := http.FileServer(root)
+	if len(root) > 1 && root[0] == '.' {
+		pwd, _ := os.Getwd()
+		root = filepath.Join(pwd, root)
+	}
+	fileServer := http.FileServer(http.Dir(root))
 
-	r.GET(path, func(w http.ResponseWriter, req *http.Request, ps IParams) {
+	r.Handle(METHOD_STATIC, path, func(w http.ResponseWriter, req *http.Request, ps IParams) {
 		req.URL.Path, _ = ps.ByName("filepath")
 		fileServer.ServeHTTP(w, req)
 	})
@@ -126,6 +132,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		handle, ok := pnode.Handle.(func(http.ResponseWriter, *http.Request, IParams))
 		if ok {
 			handle(w, req, pnode)
+			return
 		} else if req.Method != "CONNECT" && path != "/" {
 			code := 301 // Permanent redirect, request with GET method
 			if req.Method != "GET" {
@@ -134,8 +141,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				code = 307
 			}
 
-			http.Redirect(w, req, req.URL.String(), code)
-			return
+			//http.Redirect(w, req, req.URL.String(), code)
+			Print(code)
 		}
 	}
 

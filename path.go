@@ -4,6 +4,20 @@ import (
 	"strings"
 )
 
+func SlashPath(p string) string {
+	if p == "" {
+		return "/"
+	}
+
+	if p[0] != '/' {
+		p = "/" + p
+	}
+	if p[len(p)-1] != '/' {
+		p += "/"
+	}
+	return p
+}
+
 func CleanPath(p string) string {
 
 	if p == "" {
@@ -19,6 +33,11 @@ func CleanPath(p string) string {
 	// path must start with '/'
 	r := 1
 	w := 1
+
+	if p[n-1] != '/' {
+		p += "/"
+		n++
+	}
 
 	if p[0] != '/' {
 		r = 0
@@ -109,29 +128,42 @@ func bufApp(buf *[]byte, s string, w int, c byte) {
 
 //parse thr url our defined.
 func ParseDefinedUrl(path string) (string, []string) {
-	manyPath := strings.Split(path, "*")
+	morePath := strings.Split(path, "*")
+
 	anPath := ""
-	switch len(manyPath) {
+	switch len(morePath) {
 	case 1:
 		anPath = path
 	case 2:
-		anPath = manyPath[0]
+		anPath = morePath[0]
 	default:
 		panic("not invlide path! split *")
 	}
 
-	manyPath = strings.Split(anPath, ":")
+	manyPath := strings.Split(anPath, ":")
 
 	realPath := ""
 	var realMap = make([]string, 0)
 	switch len(manyPath) {
 	case 1:
-		realPath = path
+		realPath = anPath
 	case 0:
 		panic("not invlide path! split:")
 	default:
 		realPath = manyPath[0]
 		realMap = manyPath[1:]
 	}
+
+	if len(morePath) == 2 {
+		realMap = append(realMap, morePath[1:]...)
+	}
+
+	//strip the last charact if the char is /
+	for inx, value := range realMap {
+		if l := len(value); value[l-1] == '/' && l > 2 {
+			realMap[inx] = string(value[:l-1])
+		}
+	}
+
 	return realPath, realMap
 }
