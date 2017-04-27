@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type IParams interface {
@@ -89,8 +90,13 @@ func (r *Router) Handler(method, path string, handler http.Handler) {
 // use http.Dir:
 //     router.ServeFiles("/src/*filepath", http.Dir("/var/www"))
 func (r *Router) ServeFiles(path string, root string) {
-	if len(path) < 10 || path[len(path)-10:] != "/*filepath" {
+	if len(path) < 10 {
 		panic("path must end with /*filepath in path '" + path + "'")
+	}
+
+	pathArr := strings.SplitN(path, "*", 2)
+	if len(pathArr) != 2 {
+		panic("path must contain with /* in path '" + path + "'")
 	}
 
 	if len(root) > 1 && root[0] == '.' {
@@ -100,7 +106,7 @@ func (r *Router) ServeFiles(path string, root string) {
 	fileServer := http.FileServer(http.Dir(root))
 
 	r.Handle(METHOD_STATIC, path, func(w http.ResponseWriter, req *http.Request, ps IParams) {
-		req.URL.Path, _ = ps.ByName("filepath")
+		req.URL.Path, _ = ps.ByName(pathArr[1])
 		fileServer.ServeHTTP(w, req)
 	})
 }
