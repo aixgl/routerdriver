@@ -109,18 +109,18 @@ func (um *UrlMap) getValue(reqPath string, margs ...string) *RouterRet {
 	//Reversal traversal url
 	for i := rpLen - 1; i >= 0; i-- {
 		if reqPath[i] == '/' {
+			if jk != i {
+				vals := make([]string, 1)
+				vals[0] = reqPath[i+1 : jk]
+				values = append(vals, values...)
+				jk = i
+			}
+
 			if um.Store[reqPath[:(i+1)]] != nil {
 				key = reqPath[:(i + 1)]
 				nods = um.Store[key]
 				jk = i
 				break
-			} else {
-				if jk != i {
-					vals := make([]string, 1)
-					vals = append(vals, reqPath[i:jk])
-					values = append(vals, values...)
-					jk = i
-				}
 			}
 		}
 	}
