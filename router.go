@@ -1,6 +1,7 @@
 package routerdriver
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 type IParams interface {
 	ByName(string) (string, bool)
 	By(uint) (string, bool)
+	SetParam(string, string)
 }
 
 type Router struct {
@@ -23,7 +25,7 @@ type Router struct {
 func New() *Router {
 	return &Router{
 		HandleOPTIONS: true,
-		UrlMap:        &UrlMap{Store: make(map[string][]*node), Num: 0},
+		UrlMap:        NewMap(),
 	}
 }
 
@@ -111,14 +113,15 @@ func (r *Router) ServeFiles(path string, root string) {
 	})
 }
 
-func (r *Router) Lookup(method, path string) *RouterRet {
-	ret := r.UrlMap.getValue(path)
+func (r *Router) Lookup(method, path string) (*RouterRet, error) {
+	ret, ok := r.UrlMap.getValue(path)
 
+	//有点忘了为什么这么写了
 	if ret.Type == "" || ret.Type == method {
-		return ret
+		return nil, errors.New("request method is nil")
 	}
 
-	return nil
+	return ret, ok
 }
 
 //painc recover
@@ -129,17 +132,42 @@ func (r *Router) recv(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	//Print("ServeHTTP of router")
+	r.HandleRequest(w, req, nil)
+}
+
+func (r *Router) HandleRequest(w http.ResponseWriter, req *http.Request, ps IParams) *RouterRet {
+	//Print("handle request of router")
 	if r.PanicHandler != nil {
 		defer r.recv(w, req)
 	}
 
 	path := req.URL.Path
-	if pnode := r.UrlMap.getValue(path, req.Method); pnode != nil {
+	if pnode, err := r.UrlMap.getValue(path, req.Method); pnode != nil && err == nil {
 		handle, ok := pnode.Handle.(func(http.ResponseWriter, *http.Request, IParams))
+		//Print(pnode)
 		if ok {
-			handle(w, req, pnode)
-			return
-		} else if req.Method != "CONNECT" && path != "/" {
+
+			if ps != nil {
+				for inx, val := range pnode.ParamMap {
+					v, _ := pnode.By(val)
+					ps.SetParam(inx, v)
+				}
+			} else {
+				ps = pnode
+			}
+
+			handle(w, req, ps)
+			return pnode
+
+		}
+
+		if handle, ok := pnode.Handle.(func()); ok {
+			handle()
+			return pnode
+		}
+
+		if req.Method != "CONNECT" && path != "/" {
 			code := 301 // Permanent redirect, request with GET method
 			if req.Method != "GET" {
 				// Temporary redirect, request with same method
@@ -148,7 +176,8 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 
 			//http.Redirect(w, req, req.URL.String(), code)
-			Print(code)
+			//Print(code)
+			pnode.code = uint32(code)
 		}
 	}
 
@@ -157,13 +186,18 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		// Handle OPTIONS requests
 		if r.HandleOPTIONS {
 			w.Header().Set("Allow", "GET,POST,PUT,DELETE")
-			return
+			return nil
 		}
 	}
 	// Handle 404
-	if r.NotFound != nil {
-		r.NotFound.ServeHTTP(w, req)
-	} else {
-		http.NotFound(w, req)
-	}
+	//if r.NotFound != nil {
+	//	r.NotFound.ServeHTTP(w, req)
+	//} else {
+	//	http.NotFound(w, req)
+	//}
+	return nil
+}
+
+func (r *Router) Alloc() interface{} {
+	return r
 }

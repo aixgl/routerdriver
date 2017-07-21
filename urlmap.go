@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 var Print = fmt.Println
@@ -16,6 +17,8 @@ const (
 type UrlMap struct {
 	Store map[string][]*node
 	Num   uint
+	lock  sync.RWMutex
+	pool  sync.Pool
 }
 
 //defined router node that stored detail
@@ -35,6 +38,20 @@ type RouterRet struct {
 	ParamMap   map[string]uint
 	Handle     interface{}
 	Type       string
+	code       uint32
+}
+
+func NewMap() *UrlMap {
+	m := &UrlMap{Store: make(map[string][]*node), Num: 0}
+	m.pool.New = func() interface{} {
+		return &RouterRet{}
+	}
+
+	return m
+}
+
+func (um *UrlMap) readMap(key string) (nodes []*node, err error) {
+	return
 }
 
 //add defined router
@@ -93,14 +110,16 @@ func (um *UrlMap) exists(real string, node *node) (bool, error) {
 
 //get return data based on the requested route
 //return
-func (um *UrlMap) getValue(reqPath string, margs ...string) *RouterRet {
-	reqPath = SlashPath(reqPath)
+func (um *UrlMap) getValue(reqPath string, margs ...string) (*RouterRet, error) {
+	//reqPath = SlashPath(reqPath)
 
 	rpLen := len(reqPath)
 	var nods []*node
-	var key, method string = "", ""
-	var values []string = make([]string, 0)
+	var key = ""
+	method := ""
+	var values []string = make([]string, strings.Count(reqPath, "/"))
 	var jk = rpLen - 1
+	var valuesRealLen int
 
 	if len(margs) >= 1 {
 		method = margs[0]
@@ -108,51 +127,70 @@ func (um *UrlMap) getValue(reqPath string, margs ...string) *RouterRet {
 
 	//Reversal traversal url
 	for i := rpLen - 1; i >= 0; i-- {
-		if reqPath[i] == '/' {
-			if jk != i {
-				vals := make([]string, 1)
-				vals[0] = reqPath[i+1 : jk]
-				values = append(vals, values...)
-				jk = i
-			}
+		if reqPath[i] != '/' && i != (rpLen-1) {
+			continue
+		}
 
-			if um.Store[reqPath[:(i+1)]] != nil {
-				key = reqPath[:(i + 1)]
-				nods = um.Store[key]
-				jk = i
-				break
-			}
+		// if not find loop backward;
+		if jk != i {
+			values[valuesRealLen] = reqPath[i+1 : jk]
+			jk = i
+			valuesRealLen++
+		}
+
+		// if find the url map break the loop
+		key = reqPath[:i+1]
+		nods = um.Store[key]
+		if len(nods) != 0 {
+			jk = i
+			break
 		}
 	}
-
 	//not found urlmap || urlMap[key] is empty
 	if key == "" || len(nods) == 0 {
-		return nil
+		if jk > 0 || valuesRealLen > 0 {
+		}
+		return nil, errors.New("path is not valid" + method + values[0])
 	}
 
-	param := &RouterRet{}
-	param.Path = reqPath
-	param.RealPath = key
+	rt := um.pool.Get().(*RouterRet)
+	rt.Path = reqPath
+	rt.RealPath = key
+	rt.code = 0
+	rt.Type = method
+
+	values = values[:valuesRealLen+1]
+	vl := valuesRealLen
+	for i := 0; i <= vl; i++ {
+		if i >= (vl - i) {
+			break
+		}
+		values[i], values[vl-i] = values[vl-i], values[i]
+	}
+
 	for _, nod := range nods {
 		if len(nod.ParamSlice) == len(values) && strings.Contains(nod.Type, method) {
-			param.Handle = nod.Handle
-			param.Type = nod.Type
-			param.ParamSlice = values
-			param.ParamMap = nod.ParamMap
+			rt.Handle = nod.Handle
+			rt.Type = nod.Type
+			rt.ParamSlice = values
+			rt.ParamMap = nod.ParamMap
+			break
 		}
 		//static server deal
 		if nod.Type == METHOD_STATIC {
-			param.Handle = nod.Handle
-			param.Type = nod.Type
+			rt.Handle = nod.Handle
+			rt.Type = nod.Type
 			if reqPath[rpLen-1] == '/' {
 				rpLen--
 			}
-			param.ParamSlice = []string{reqPath[jk:rpLen]}
-			param.ParamMap = nod.ParamMap
+			rt.ParamSlice = []string{reqPath[jk:rpLen]}
+			rt.ParamMap = nod.ParamMap
+			break
 		}
 	}
+	um.pool.Put(rt)
 
-	return param
+	return rt, nil
 }
 
 func (ret *RouterRet) ByName(name string) (string, bool) {
@@ -168,4 +206,9 @@ func (ret *RouterRet) By(id uint) (string, bool) {
 		return "", false
 	}
 	return ret.ParamSlice[id], true
+}
+
+func (ret *RouterRet) SetParam(name string, value string) {
+	ret.ParamSlice = append(ret.ParamSlice, value)
+	ret.ParamMap[name] = uint(len(ret.ParamSlice) - 1)
 }

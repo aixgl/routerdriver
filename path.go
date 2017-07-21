@@ -1,6 +1,7 @@
 package routerdriver
 
 import (
+	//"bytes"
 	"strings"
 )
 
@@ -9,12 +10,25 @@ func SlashPath(p string) string {
 		return "/"
 	}
 
-	if p[0] != '/' {
-		p = "/" + p
+	pl := len(p)
+	//var buffer bytes.Buffer
+
+	switch {
+	case p[0] != '/' && p[pl-1] != '/':
+		//buffer.WriteString("/")
+		//buffer.WriteString(p)
+		//buffer.WriteString("/")
+		return "/" + p + "/"
+	case p[0] != '/':
+		//buffer.WriteString("/")
+		//buffer.WriteString(p)
+		return "/" + p
+	case p[pl-1] != '/':
+		//buffer.WriteString(p)
+		//buffer.WriteString("/")
+		return p + "/"
 	}
-	if p[len(p)-1] != '/' {
-		p += "/"
-	}
+
 	return p
 }
 
